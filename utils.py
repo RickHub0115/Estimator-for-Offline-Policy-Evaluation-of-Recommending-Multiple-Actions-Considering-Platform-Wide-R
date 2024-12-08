@@ -139,6 +139,7 @@ def calc_true_value(
     b_1: np.ndarray,
     b_0: np.ndarray,
     beta: float = 1.0,
+    k: int = 1
 ) -> float:
     """評価方策の真の性能を近似する."""
     bandit_data = generate_synthetic_data(
@@ -151,7 +152,8 @@ def calc_true_value(
         b_1=b_1,
         theta_0=theta_0,
         M_0=M_0,
-        b_0=b_0
+        b_0=b_0,
+        k=k
     )
     
     cate_x_a = bandit_data["cate_x_a"]
