@@ -20,6 +20,7 @@ def generate_synthetic_data(
     b_0: np.ndarray,
     random_state: int = 12345,
     k: int = 1,    # 組み合わせの要素の数
+    num_def_actions: int = 0,
     random_policy: bool = False    # データ収集方策をランダムモデルに設定可能 (True)
 ) -> dict:
     """オフ方策学習におけるログデータを生成する."""
@@ -46,6 +47,8 @@ def generate_synthetic_data(
         pi_0 = np.ones((num_data, num_actions)) / num_actions
     else:
         pi_0 = softmax(beta * cate_x_a)
+        pi_0[:, :num_def_actions] = 0
+        pi_0 = pi_0 / pi_0.sum(1)[:, np.newaxis]
 
     # 行動や報酬を抽出する
     a = sample_k_actions_fast(pi_0, k=k, random_state=random_state)
