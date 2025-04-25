@@ -46,6 +46,8 @@ def generate_synthetic_data(
         pi_0 = np.ones((num_data, num_actions)) / num_actions
     else:
         pi_0 = softmax(beta * cate_x_a)
+        pi_0[:, :num_def_actions] = 0
+        pi_0 = pi_0 / pi_0.sum(1)[:, np.newaxis]
 
     # 行動や報酬を抽出する
     a = sample_action_fast_k(pi_0, k=k, random_state=random_state)
@@ -157,13 +159,14 @@ def calc_true_value(
     dim_context: int,
     num_actions: int,
     theta_1: np.ndarray,
-    theta_0:np.ndarray,
     M_1: np.ndarray,
-    M_0: np.ndarray,
     b_1: np.ndarray,
+    theta_0:np.ndarray,
+    M_0: np.ndarray,
     b_0: np.ndarray,
     beta: float = 1.0,
-    k: int = 1
+    k: int = 1,
+    random_policy: bool = True
 ) -> float:
     """評価方策の真の性能を近似する."""
     bandit_data = generate_synthetic_data(
@@ -177,7 +180,8 @@ def calc_true_value(
         theta_0=theta_0,
         M_0=M_0,
         b_0=b_0,
-        k=k
+        k=k,
+        random_policy=random_policy
     )
     
     cate_x_a = bandit_data["cate_x_a"]
