@@ -19,10 +19,10 @@ def calc_cips(
     dinominator = (pi_0 * a_1).sum(axis=1, keepdims=True)
     # 重みを計算
     w_1 = (pi * a_1) / dinominator
-    w_0 = (1 * a_0 - pi * a_0) / (1 - dinominator)
+    w_0 = (a_0 - pi * a_0) / (1 - dinominator)
     w_1, w_0 = np.nan_to_num(w_1, 0), np.nan_to_num(w_0, 0)
     
-    return (dataset["r_mat"] * w_1 + dataset["r_mat"] * w_0).sum(1).mean()
+    return (w_1 * dataset["r_mat"] + w_0 * dataset["r_mat"]).sum(1).mean()
 
 # Combined-DR推定量
 def calc_cdr(
@@ -38,7 +38,7 @@ def calc_cdr(
     dinominator = (pi_0 * a_1).sum(axis=1, keepdims=True)
     # 重みを計算
     w_1 = (pi * a_1) / (dinominator)
-    w_0 = (1 * a_0 - pi * a_0) / (1 - dinominator)
+    w_0 = (a_0 - pi * a_0) / (1 - dinominator)
     w_1, w_0 = np.nan_to_num(w_1, 0), np.nan_to_num(w_0, 0)
     # Combined-DR推定量
     cdr = w_1 * (dataset["r_mat"] - q1_hat*a_1) + w_0 * (dataset["r_mat"] - q0_hat*a_0)
