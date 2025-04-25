@@ -21,7 +21,7 @@ def generate_synthetic_data(
     random_state: int = 12345,
     k: int = 1,    # 組み合わせの要素の数
     num_def_actions: int = 0,
-    random_policy: bool = False    # データ収集方策をランダムモデルに設定可能 (True)
+    random_policy: bool = True    # データ収集方策をランダムモデルに設定可能 (True)
 ) -> dict:
     """オフ方策学習におけるログデータを生成する."""
     random_ = check_random_state(random_state)
@@ -43,19 +43,15 @@ def generate_synthetic_data(
 
     # データ収集方策を定義する
     if random_policy:
-        # ランダムモデル
         pi_0 = np.ones((num_data, num_actions)) / num_actions
     else:
         pi_0 = softmax(beta * cate_x_a)
-        pi_0[:, :num_def_actions] = 0
-        pi_0 = pi_0 / pi_0.sum(1)[:, np.newaxis]
 
     # 行動や報酬を抽出する
-    a = sample_k_actions_fast(pi_0, k=k, random_state=random_state)
+    a = sample_action_fast_k(pi_0, k=k, random_state=random_state)
     a_mat = np.zeros((num_data, num_actions), dtype=int)
     for i in range(num_data):
         a_mat[i, a[i]] = 1
-
     pscore_mat = a_mat * pi_0 + (1 - a_mat) * (1 - pi_0)
 
     q_x_a_factual = a_mat * q_x_a_1 + (1 - a_mat) * q_x_a_0
@@ -66,7 +62,7 @@ def generate_synthetic_data(
         num_actions=num_actions,
         x=x,
         a=a,
-        r=r_mat * a_mat,
+        r=(r_mat * a_mat).sum(axis=1),
         a_mat=a_mat,
         r_mat=r_mat,
         pi_0=pi_0,
@@ -89,7 +85,7 @@ def sample_action_fast(pi: np.ndarray, random_state: int = 12345) -> np.ndarray:
 
 
 # 複数の行動を推薦する
-def sample_k_actions_fast(
+def sample_action_fast_k(
     pi: np.ndarray,
     k: int,
     random_state: int = 12345
@@ -103,11 +99,6 @@ def sample_k_actions_fast(
             num_actions, size=k, replace=False, p=pi[i]
         )
     return sampled_actions
-
-
-# シグモイド関数
-def sigmoid(x: np.ndarray) -> np.ndarray:
-    return np.exp(np.minimum(x, 0)) / (1.0 + np.exp(-np.abs(x)))
 
 
 # ソフトマックス関数
@@ -129,8 +120,38 @@ def eps_greedy_policy(
 
     return pi / pi.sum(1)[:, np.newaxis]
 
+# epsilon-greedy法 (top-k)
+def eps_greedy_policy_k(
+    q_func: np.ndarray,
+    eps: float = 0.2,
+    k: int = 3
+) -> np.ndarray:
+    num_data, num_actions = q_func.shape
+    pi = np.full_like(q_func, eps / num_actions)  # 初期化（すべての行動にeps均等配分）
+
+    # Top-kインデックスを取得（降順）
+    topk_idx = np.argpartition(-q_func, kth=k-1, axis=1)[:, :k]
+
+    # Top-k内のq_funcを取り出し、正規化して重み計算
+    q_topk = np.take_along_axis(q_func, topk_idx, axis=1)
+    weights_topk = q_topk / q_topk.sum(axis=1, keepdims=True)
+
+    # 1 - eps の分布を割り当て
+    topk_probs = (1.0 - eps) * weights_topk
+
+    # piにtopk_probsを配置
+    row_indices = np.repeat(np.arange(num_data), k)
+    col_indices = topk_idx.flatten()
+    pi[row_indices, col_indices] += topk_probs.flatten()
+
+    # 念のため正規化（理論的には不要なはずだが数値誤差対策）
+    pi = pi / pi.sum(axis=1, keepdims=True)
+
+    return pi
 
 # 真の性能を計算する
+# ミス
+# piの定義、bandit_dataでrandom_stateの指定がない。random_policy=Trueなどがない。
 def calc_true_value(
     num_data:int,
     dim_context: int,
@@ -160,12 +181,11 @@ def calc_true_value(
     )
     
     cate_x_a = bandit_data["cate_x_a"]
-    pi =eps_greedy_policy(cate_x_a)
-    
-    q_x_a_1 =bandit_data["q_x_a_1"]
     q_x_a_0 = bandit_data["q_x_a_0"]
+    q_x_a_1 = bandit_data["q_x_a_1"]
+    pi =eps_greedy_policy_k(cate_x_a)
 
-    return (pi*q_x_a_1+(1-pi)*q_x_a_0).sum(1).mean()
+    return ((pi) * q_x_a_1 + (1-pi) * q_x_a_0).sum(1).mean()
 
 
 # MSEを計算する
