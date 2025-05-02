@@ -45,9 +45,12 @@ def generate_synthetic_data(
     if random_policy:
         pi_0 = np.ones((num_data, num_actions)) / num_actions
     else:
-        pi_0 = softmax(beta * cate_x_a)
+        pi_0 = np.ones((num_data, num_actions))
         pi_0[:, :num_def_actions] = 0
         pi_0 = pi_0 / pi_0.sum(1)[:, np.newaxis]
+        # pi_0 = softmax(beta * cate_x_a)
+        # pi_0[:, :num_def_actions] = 0
+        # pi_0 = pi_0 / pi_0.sum(1)[:, np.newaxis]
 
     # 行動や報酬を抽出する
     a = sample_action_fast_k(pi_0, k=k, random_state=random_state)
