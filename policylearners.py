@@ -212,8 +212,8 @@ class BasedGradientPolicyLearner_CDR:
             dataset["pscore_mat"],
         )
         q_x_a_1, q_x_a_0 = dataset_test["q_x_a_1"], dataset_test["q_x_a_0"]
-        q1_hat = q_x_a_1 + self.random_.normal(0, 0.05, size=q_x_a_1.shape)
-        q0_hat = q_x_a_0 + self.random_.normal(0, 0.05, size=q_x_a_0.shape)
+        q1_hat = q_x_a_1 + self.random_.normal(-0.05, scale=0.05, size=q_x_a_1.shape)
+        q0_hat = q_x_a_0 + self.random_.normal(-0.05, scale=0.05, size=q_x_a_0.shape)
 
         if self.solver == "adagrad":
             optimizer = optim.Adagrad(
@@ -317,7 +317,7 @@ class BasedGradientPolicyLearner_CDR:
         #     ((1 - a_mat) * (1.0 - current_pi) / (1 - denominator)) * diff2 * log_prob2
         # ).sum(1)
         estimated_policy_grad_arr += (
-            (current_pi * q1_hat - (1.0 - current_pi) * q0_hat) * log_prob1
+            current_pi * q1_hat * log_prob1
         ).sum(1)
         # estimated_policy_grad_arr += (
         #     ((1.0 - current_pi) * q0_hat - current_pi * q1_hat) * log_prob2
@@ -534,8 +534,8 @@ class CateBasedGradientPolicyLearner_CDR:
             dataset["pscore_mat"],
         )
         q_x_a_1, q_x_a_0 = dataset_test["q_x_a_1"], dataset_test["q_x_a_0"]
-        q1_hat = q_x_a_1 + self.random_.normal(0, 0.05, size=q_x_a_1.shape)
-        q0_hat = q_x_a_0 + self.random_.normal(0, 0.05, size=q_x_a_0.shape)
+        q1_hat = q_x_a_1 + self.random_.normal(-0.05, scale=0.05, size=q_x_a_1.shape)
+        q0_hat = q_x_a_0 + self.random_.normal(-0.05, scale=0.05, size=q_x_a_0.shape)
 
         if self.solver == "adagrad":
             optimizer = optim.Adagrad(
