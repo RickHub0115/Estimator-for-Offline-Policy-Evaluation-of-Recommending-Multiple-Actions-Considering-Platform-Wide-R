@@ -89,13 +89,13 @@ class BasedGradientPolicyLearner_CIPS:
         q_x_a_0 = dataset_test["q_x_a_0"]
         for _ in range(self.max_iter):
             self.nn_model.train()
-            for x, a, r, pscore_mat_, a_mat_, r_mat_ in training_data_loader:
+            for x_, a_, r_, pscore_mat_, a_mat_, r_mat_ in training_data_loader:
                 optimizer.zero_grad()
-                pi = self.nn_model(x)
+                pi = self.nn_model(x_)
                 loss = -self._estimate_policy_gradient(
-                    a=a,
+                    a=a_,
                     a_mat=a_mat_,
-                    r=r,
+                    r=r_,
                     r_mat=r_mat_,
                     pscore_mat=pscore_mat_,
                     pi=pi,
@@ -141,12 +141,16 @@ class BasedGradientPolicyLearner_CIPS:
         pi: torch.Tensor,
     ) -> torch.Tensor:
         current_pi = pi.detach()
-        log_prob = torch.log(pi + self.log_eps)
+        log_prob1 = torch.log(pi + self.log_eps)
+        log_prob2 = torch.log((1.0 - pi) + self.log_eps)
         denominator = (pscore_mat * a_mat).sum(1, keepdims=True)
         
         estimated_policy_grad_arr = (
-            (a_mat * current_pi / denominator) * r_mat * log_prob
+            (a_mat * current_pi / denominator) * r_mat * log_prob1
         ).sum(1)
+        # estimated_policy_grad_arr += (
+        #     ((1 - a_mat) * (1.0 - current_pi) / (1 - denominator)) * r_mat * log_prob2
+        # ).sum(1)
 
         return estimated_policy_grad_arr
 
@@ -158,6 +162,7 @@ class BasedGradientPolicyLearner_CIPS:
 
 
 
+# CDR推定量_naive
 @dataclass
 class BasedGradientPolicyLearner_CDR:
     dim_x: int
@@ -201,7 +206,14 @@ class BasedGradientPolicyLearner_CDR:
 
     def fit(self, dataset: dict, dataset_test: dict) -> None:
         x, a, r = dataset["x"], dataset["a"], dataset["r"]
-        pscore, pi_0 = dataset["pscore"], dataset["pi_0"]
+        a_mat, r_mat, pscore_mat = (
+            dataset["a_mat"],
+            dataset["r_mat"],
+            dataset["pscore_mat"],
+        )
+        q_x_a_1, q_x_a_0 = dataset_test["q_x_a_1"], dataset_test["q_x_a_0"]
+        q1_hat = q_x_a_1 + self.random_.normal(0, 0.05, size=q_x_a_1.shape)
+        q0_hat = q_x_a_0 + self.random_.normal(0, 0.05, size=q_x_a_0.shape)
 
         if self.solver == "adagrad":
             optimizer = optim.Adagrad(
@@ -222,23 +234,26 @@ class BasedGradientPolicyLearner_CDR:
             x,
             a,
             r,
-            pscore,
-            pi_0,
-            pi_0,
-        )
+            pscore_mat,
+            a_mat,
+            r_mat,
+            q1_hat,
+            q0_hat,)
 
         # start policy training
         q_x_a_1 = dataset_test["q_x_a_1"]
         q_x_a_0 = dataset_test["q_x_a_0"]
         for _ in range(self.max_iter):
             self.nn_model.train()
-            for x, a, r, p, _, _ in training_data_loader:
+            for x_, a_, r_, pscore_mat_, a_mat_, r_mat_ in training_data_loader:
                 optimizer.zero_grad()
-                pi = self.nn_model(x)
+                pi = self.nn_model(x_)
                 loss = -self._estimate_policy_gradient(
-                    a=a,
-                    r=r,
-                    pscore=p,
+                    a=a_,
+                    a_mat=a_mat_,
+                    r=r_,
+                    r_mat=r_mat_,
+                    pscore_mat=pscore_mat_,
                     pi=pi,
                 ).mean()
                 loss.backward()
@@ -253,16 +268,20 @@ class BasedGradientPolicyLearner_CDR:
         a: np.ndarray,
         r: np.ndarray,
         pscore: np.ndarray,
-        q_hat: np.ndarray,
-        pi_0: np.ndarray,
+        a_mat: np.ndarray,
+        r_mat: np.ndarray,
+        q1_hat: np.ndarray,
+        q0_hat: np.ndarray,
     ) -> tuple:
+        self.q1_hat_tensor = torch.from_numpy(q1_hat).float()
+        self.q0_hat_tensor = torch.from_numpy(q0_hat).float()
         dataset = GradientBasedPolicyDataset(
             torch.from_numpy(x).float(),
             torch.from_numpy(a).long(),
             torch.from_numpy(r).float(),
             torch.from_numpy(pscore).float(),
-            torch.from_numpy(q_hat).float(),
-            torch.from_numpy(pi_0).float(),
+            torch.from_numpy(a_mat).float(),
+            torch.from_numpy(r_mat).float(),
         )
 
         data_loader = torch.utils.data.DataLoader(
@@ -275,17 +294,35 @@ class BasedGradientPolicyLearner_CDR:
     def _estimate_policy_gradient(
         self,
         a: torch.Tensor,
+        a_mat: torch.Tensor,
         r: torch.Tensor,
-        pscore: torch.Tensor,
+        r_mat: torch.Tensor,
+        pscore_mat: torch.Tensor,
         pi: torch.Tensor,
     ) -> torch.Tensor:
         current_pi = pi.detach()
-        log_prob = torch.log(pi + self.log_eps)
-        idx = torch.arange(a.shape[0], dtype=torch.long)
+        log_prob1 = torch.log(pi + self.log_eps)
+        log_prob2 = torch.log((1.0 - pi) + self.log_eps)
+        denominator = (pscore_mat * a_mat).sum(1, keepdims=True)
+        q1_hat = self.q1_hat_tensor[:r_mat.size(0)]
+        q0_hat = self.q0_hat_tensor[:r_mat.size(0)]
 
-        iw = current_pi[idx, a] / pscore
-        estimated_policy_grad_arr = iw * r * log_prob[idx, a]
-
+        diff1 = r_mat - q1_hat
+        diff2 = r_mat - q0_hat
+        
+        estimated_policy_grad_arr = (
+            (a_mat * current_pi / denominator) * diff1 * log_prob1
+        ).sum(1)
+        # estimated_policy_grad_arr += (
+        #     ((1 - a_mat) * (1.0 - current_pi) / (1 - denominator)) * diff2 * log_prob2
+        # ).sum(1)
+        estimated_policy_grad_arr += (
+            (current_pi * q1_hat - (1.0 - current_pi) * q0_hat) * log_prob1
+        ).sum(1)
+        # estimated_policy_grad_arr += (
+        #     ((1.0 - current_pi) * q0_hat - current_pi * q1_hat) * log_prob2
+        # ).sum(1)
+        
         return estimated_policy_grad_arr
 
     def predict(self, dataset_test: np.ndarray) -> np.ndarray:
@@ -447,7 +484,7 @@ class CateBasedGradientPolicyLearner_CIPS:
         return self.nn_model(x).detach().numpy()
 
 
-
+# CDR推定量_CATE
 @dataclass
 class CateBasedGradientPolicyLearner_CDR:
     dim_x: int
@@ -496,6 +533,9 @@ class CateBasedGradientPolicyLearner_CDR:
             dataset["r_mat"],
             dataset["pscore_mat"],
         )
+        q_x_a_1, q_x_a_0 = dataset_test["q_x_a_1"], dataset_test["q_x_a_0"]
+        q1_hat = q_x_a_1 + self.random_.normal(0, 0.05, size=q_x_a_1.shape)
+        q0_hat = q_x_a_0 + self.random_.normal(0, 0.05, size=q_x_a_0.shape)
 
         if self.solver == "adagrad":
             optimizer = optim.Adagrad(
@@ -519,7 +559,8 @@ class CateBasedGradientPolicyLearner_CDR:
             pscore_mat,
             a_mat,
             r_mat,
-        )
+            q1_hat,
+            q0_hat,)
 
         # start policy training
         q_x_a_1 = dataset_test["q_x_a_1"]
@@ -549,16 +590,20 @@ class CateBasedGradientPolicyLearner_CDR:
         a: np.ndarray,
         r: np.ndarray,
         pscore: np.ndarray,
-        q_hat: np.ndarray,
-        pi_0: np.ndarray,
+        a_mat: np.ndarray,
+        r_mat: np.ndarray,
+        q1_hat: np.ndarray,
+        q0_hat: np.ndarray,
     ) -> tuple:
+        self.q1_hat_tensor = torch.from_numpy(q1_hat).float()
+        self.q0_hat_tensor = torch.from_numpy(q0_hat).float()
         dataset = GradientBasedPolicyDataset(
             torch.from_numpy(x).float(),
             torch.from_numpy(a).long(),
             torch.from_numpy(r).float(),
             torch.from_numpy(pscore).float(),
-            torch.from_numpy(q_hat).float(),
-            torch.from_numpy(pi_0).float(),
+            torch.from_numpy(a_mat).float(),
+            torch.from_numpy(r_mat).float(),
         )
 
         data_loader = torch.utils.data.DataLoader(
@@ -580,15 +625,26 @@ class CateBasedGradientPolicyLearner_CDR:
         current_pi = pi.detach()
         log_prob1 = torch.log(pi + self.log_eps)
         log_prob2 = torch.log((1.0 - pi) + self.log_eps)
-        idx = torch.arange(a.shape[0], dtype=torch.long)
+        denominator = (pscore_mat * a_mat).sum(1, keepdims=True)
+        q1_hat = self.q1_hat_tensor[:r_mat.size(0)]
+        q0_hat = self.q0_hat_tensor[:r_mat.size(0)]
 
+        diff1 = r_mat - q1_hat
+        diff2 = r_mat - q0_hat
+        
         estimated_policy_grad_arr = (
-            current_pi[idx, a] * r / pscore_mat[idx, a]
-        ) * log_prob1[idx, a]
-        estimated_policy_grad_arr += (
-            (1 - a_mat) * (1.0 - current_pi) * (r_mat / pscore_mat) * log_prob2
+            (a_mat * current_pi / denominator) * diff1 * log_prob1
         ).sum(1)
-
+        estimated_policy_grad_arr += (
+            ((1 - a_mat) * (1.0 - current_pi) / (1 - denominator)) * diff2 * log_prob2
+        ).sum(1)
+        estimated_policy_grad_arr += (
+            (current_pi * q1_hat - (1.0 - current_pi) * q0_hat) * log_prob1
+        ).sum(1)
+        estimated_policy_grad_arr += (
+            ((1.0 - current_pi) * q0_hat - current_pi * q1_hat) * log_prob2
+        ).sum(1)
+        
         return estimated_policy_grad_arr
 
     def predict(self, dataset_test: np.ndarray) -> np.ndarray:
