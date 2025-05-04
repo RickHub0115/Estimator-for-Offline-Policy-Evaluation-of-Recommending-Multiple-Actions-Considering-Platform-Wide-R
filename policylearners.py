@@ -317,7 +317,7 @@ class BasedGradientPolicyLearner_CDR:
         #     ((1 - a_mat) * (1.0 - current_pi) / (1 - denominator)) * diff2 * log_prob2
         # ).sum(1)
         estimated_policy_grad_arr += (
-            current_pi * q1_hat * log_prob1
+            a_mat * current_pi * q1_hat * log_prob1
         ).sum(1)
         # estimated_policy_grad_arr += (
         #     ((1.0 - current_pi) * q0_hat - current_pi * q1_hat) * log_prob2
@@ -472,7 +472,7 @@ class CateBasedGradientPolicyLearner_CIPS:
             (a_mat * current_pi / denominator) * r_mat * log_prob1
         ).sum(1)
         estimated_policy_grad_arr += (
-            ((1 - a_mat) * (1.0 - current_pi) / (1 - denominator)) * r_mat * log_prob2
+            ((1 - a_mat) * (1.0 - current_pi) / (denominator)) * r_mat * log_prob2
         ).sum(1)
 
         return estimated_policy_grad_arr
@@ -639,10 +639,10 @@ class CateBasedGradientPolicyLearner_CDR:
             ((1 - a_mat) * (1.0 - current_pi) / (1 - denominator)) * diff2 * log_prob2
         ).sum(1)
         estimated_policy_grad_arr += (
-            (current_pi * q1_hat - (1.0 - current_pi) * q0_hat) * log_prob1
+            a_mat * current_pi * (q1_hat - q0_hat) * log_prob1
         ).sum(1)
         estimated_policy_grad_arr += (
-            ((1.0 - current_pi) * q0_hat - current_pi * q1_hat) * log_prob2
+            (1.0 - a_mat) * current_pi * (q1_hat - q0_hat) * log_prob2
         ).sum(1)
         
         return estimated_policy_grad_arr
