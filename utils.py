@@ -45,10 +45,8 @@ def generate_synthetic_data(
     if random_policy:
         pi_0 = np.ones((num_data, num_actions)) / num_actions
     else:
-        pi_0 = np.ones((num_data, num_actions))
-        pi_0[:, :num_def_actions] = 0
-        pi_0 = pi_0 / pi_0.sum(1)[:, np.newaxis]
-        # pi_0 = softmax(beta * cate_x_a)
+        pi_0 = softmax(beta * cate_x_a)
+        # pi_0 = np.ones((num_data, num_actions))
         # pi_0[:, :num_def_actions] = 0
         # pi_0 = pi_0 / pi_0.sum(1)[:, np.newaxis]
 
@@ -277,6 +275,45 @@ class GradientBasedPolicyDataset(torch.utils.data.Dataset):
             self.pscore[index],
             self.q_hat[index],
             self.pi_0[index],
+        )
+
+    def __len__(self):
+        return self.context.shape[0]
+
+@dataclass
+class GradientBasedPolicyDataset_dr(torch.utils.data.Dataset):
+    context: np.ndarray
+    action: np.ndarray
+    reward: np.ndarray
+    pscore: np.ndarray 
+    a_mat: np.ndarray
+    r_mat: np.ndarray
+    q1_hat: np.ndarray
+    q0_hat: np.ndarray
+
+    def __post_init__(self):
+        """initialize class"""
+        assert (
+            self.context.shape[0]
+            == self.action.shape[0]
+            == self.reward.shape[0]
+            == self.pscore.shape[0]
+            == self.a_mat.shape[0]
+            == self.r_mat.shape[0]
+            == self.q1_hat.shape[0]
+            == self.q0_hat.shape[0]
+        )
+
+    def __getitem__(self, index):
+        return (
+            self.context[index],
+            self.action[index],
+            self.reward[index],
+            self.pscore[index],
+            self.a_mat[index], 
+            self.r_mat[index],
+            self.q1_hat[index],
+            self.q0_hat[index],
         )
 
     def __len__(self):

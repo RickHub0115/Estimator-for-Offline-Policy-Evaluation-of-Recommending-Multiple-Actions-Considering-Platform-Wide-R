@@ -148,9 +148,6 @@ class BasedGradientPolicyLearner_CIPS:
         estimated_policy_grad_arr = (
             (a_mat * current_pi / denominator) * r_mat * log_prob1
         ).sum(1)
-        # estimated_policy_grad_arr += (
-        #     ((1 - a_mat) * (1.0 - current_pi) / (1 - denominator)) * r_mat * log_prob2
-        # ).sum(1)
 
         return estimated_policy_grad_arr
 
@@ -472,7 +469,7 @@ class CateBasedGradientPolicyLearner_CIPS:
             (a_mat * current_pi / denominator) * r_mat * log_prob1
         ).sum(1)
         estimated_policy_grad_arr += (
-            ((1 - a_mat) * (1.0 - current_pi) / (denominator)) * r_mat * log_prob2
+            ((1 - a_mat) * (1.0 - current_pi) / (1 - denominator)) * r_mat * log_prob2
         ).sum(1)
 
         return estimated_policy_grad_arr
